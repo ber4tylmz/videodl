@@ -1,0 +1,92 @@
+static/index.html
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Video indir</title>
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#14213d;--mute:#5b6b85;--acc:#2563eb;--line:#d8e0ee}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1424;--card:#172038;--ink:#eef2fb;--mute:#93a1bd;--acc:#5b8cff;--line:#2a3658}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{min-height:100dvh;display:flex;align-items:flex-start;justify-content:center;
+ padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+ background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
+main{width:100%;max-width:520px;margin-top:4vh;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+h1{margin:0 0 4px;font-size:1.5rem}
+.sub{margin:0 0 16px;color:var(--mute)}
+input,select,button{font:inherit;font-size:16px;border-radius:12px;border:1px solid var(--line);padding:14px;background:var(--bg);color:var(--ink);width:100%;min-height:48px}
+.paste{display:flex;gap:8px}
+.paste button{width:auto;margin:0;background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.row{display:flex;gap:8px;margin-top:8px}
+#go{background:var(--acc);color:#fff;border:0;font-weight:600;margin-top:10px}
+#go:disabled{opacity:.6}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+#out{margin-top:16px;word-break:break-word}
+.meta{display:flex;gap:12px;align-items:center}
+.meta img{width:96px;border-radius:8px;flex:none}
+.msg{color:var(--mute)} .err{color:#d33}
+a.dl{display:block;text-align:center;background:var(--acc);color:#fff;padding:14px;border-radius:12px;text-decoration:none;font-weight:600;margin-top:12px}
+small{display:block;margin-top:16px;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Video indir</h1>
+  <p class="sub">YouTube, Instagram, TikTok, X ve daha fazlası.</p>
+  <div class="paste">
+    <input id="url" type="url" inputmode="url" placeholder="Linki yapıştır" autocomplete="off" autocapitalize="off">
+    <button id="pb" type="button" aria-label="Panodan yapıştır">Yapıştır</button>
+  </div>
+  <div class="row">
+    <select id="fmt" aria-label="Biçim"><option value="mp4">Video (MP4)</option><option value="mp3">Ses (MP3)</option></select>
+    <select id="q" aria-label="Kalite"><option value="best">En yüksek (4K/8K, MKV)</option><option value="2160">4K MP4</option><option value="1440">1440p MP4</option><option value="1080">1080p MP4</option><option value="720">720p</option><option value="480">480p</option></select>
+  </div>
+  <button id="go">İndir</button>
+  <div id="out" aria-live="polite"></div>
+  <small>Sadece indirme hakkın olan içerikler için kullan.</small>
+</main>
+<script>
+const $=id=>document.getElementById(id), out=$("out"), go=$("go");
+const post=(p,b)=>fetch(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fail=m=>{out.innerHTML=`<p class="err">${esc(m)}</p>`;go.disabled=false};
+$("fmt").onchange=()=>{$("q").disabled=$("fmt").value==="mp3"};
+$("pb").onclick=async()=>{try{$("url").value=await navigator.clipboard.readText()}catch{$("url").focus()}};
+async function j(r){let d={};try{d=await r.json()}catch{} if(!r.ok) throw new Error(d.detail||"Sunucu hatası");return d}
+go.onclick=async()=>{
+  const body={url:$("url").value.trim(),format:$("fmt").value,quality:$("q").value};
+  if(!body.url) return $("url").focus();
+  go.disabled=true; out.innerHTML='<p class="msg">Video bilgisi alınıyor…</p>';
+  try{
+    const info=await j(await post("/api/info",body));
+    out.innerHTML=`<div class="meta">${info.thumb?`<img src="${esc(info.thumb)}" alt="" referrerpolicy="no-referrer">`:""}<div><b>${esc(info.title)}</b><br><span class="msg">${esc(info.uploader||"")}</span></div></div><p class="msg" id="st">İndiriliyor, bekle…</p>`;
+    const {id}=await j(await post("/api/download",body));
+    const start=Date.now();
+    const t=setInterval(async()=>{
+      try{
+        const s=await j(await fetch("/api/status/"+id));
+        if(s.status==="done"){clearInterval(t);$("st").remove();out.insertAdjacentHTML("beforeend",`<a class="dl" href="/api/file/${id}">Dosyayı kaydet</a>`);go.disabled=false}
+        else if(s.status==="error"){clearInterval(t);fail(s.error||"İndirme başarısız.")}
+        else if(Date.now()-start>600000){clearInterval(t);fail("Zaman aşımı.")}
+      }catch(e){clearInterval(t);fail(e.message)}
+    },1500);
+  }catch(e){fail(e.message)}
+};
+</script>
+</body>
+</html>
+
+static/manifest.json
+{"name":"Video indir","short_name":"Video indir","start_url":"/","display":"standalone",
+ "background_color":"#2563eb","theme_color":"#2563eb",
+ "icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+
+static/icon.svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="110" fill="#2563eb"/><path d="M256 110v190m0 0-80-80m80 80 80-80M150 370h212" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
