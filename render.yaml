@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: videodl
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
